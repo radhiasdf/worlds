@@ -1,18 +1,19 @@
 import pygame as pg
 import os
 import shadows
-from constants import TILE_ZOOM
-sprite_size = TILE_ZOOM*2
+from math import sqrt
+from constants import TILE_ZOOM, MOUSE_REACH
 from solitaire.solitaire import InSolitaire
+SPRITE_SIZE = TILE_ZOOM * 2
 
 
 class Player:
-    def __init__(self, pos, game):
-        self.game = game  # is putting the game instance in a bunch of other instances bad
+    def __init__(self, pos, game_manager):
+        self.gameManager = game_manager  # is putting the game instance in a bunch of other instances bad
 
         self.imgsWalkingFront = [pg.image.load(os.path.join("assets", "pixil-gif-drawing-tamarin-20221217", f"sprite_{i}.png")) for i in range(4)]
         for i, img in enumerate(self.imgsWalkingFront):
-            self.imgsWalkingFront[i] = pg.transform.scale(img, (sprite_size, sprite_size)).convert_alpha()
+            self.imgsWalkingFront[i] = pg.transform.scale(img, (SPRITE_SIZE, SPRITE_SIZE)).convert_alpha()
 
         self.currentAnimationImgs = self.imgsWalkingFront
         self.rect = self.currentAnimationImgs[0].get_rect(center=pos)
@@ -22,9 +23,12 @@ class Player:
         self.frameIndex = 0
         self.img = self.currentAnimationImgs[int(self.frameIndex)]
 
+        self.inHand = {'tileID': 2, 'amount': 'infinite'}
+        self.inReach = False
+        self.mouseButtonDown = False
+
     def input(self, events):
         keys = pg.key.get_pressed()  # does this slow down code
-        print(len(keys))
         if keys[pg.K_UP] or keys[pg.K_w]:
             self.direction.y = -1
         elif keys[pg.K_DOWN] or keys[pg.K_s]:
@@ -42,10 +46,9 @@ class Player:
         for e in events:
             if e.type == pg.KEYDOWN:
                 if e.key == pg.K_SPACE:
-                    self.game.state_stack.append(InSolitaire(game_manager=self.game))
-
-                """if e.key in (pg.K_UP,pg.K_w):
-                    """
+                    self.gameManager.state_stack.append(InSolitaire(game_manager=self.gameManager))
+            elif e.type in (pg.MOUSEBUTTONDOWN, pg.MOUSEMOTION):
+                self.check_reach()
 
     def update(self, dt, camera_location, events):
         self.input(events)
@@ -57,10 +60,17 @@ class Player:
             self.frameIndex = 0
         self.img = self.currentAnimationImgs[int(self.frameIndex)]
 
-        return camera_location
+        return {'cameraLocation': camera_location, 'inReach': self.inReach}
+
+    def check_reach(self):
+        pos = pg.mouse.get_pos()
+        rect = self.rect.midbottom
+        if sqrt((pos[0] - rect[0]) ** 2 + (pos[1] - rect[1]) ** 2) < MOUSE_REACH:
+            self.inReach = True
+        else:
+            self.inReach = False
 
     def draw(self, win):
-
         shadows.draw_shadow(self.img, win, self.rect.topleft, self.rect.bottom-6)
         win.blit(self.img, (self.rect.x, self.rect.y))
 
