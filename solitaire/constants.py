@@ -1,11 +1,13 @@
 import pygame as pg
+from os.path import join
 
 FPS = 60
 
 SUITS = ['spades', 'clubs', 'hearts', 'diamonds']
 VALUES = 13
 PIXEL_SCALE = 3
-CARD_SCALE = (17*PIXEL_SCALE, 23*PIXEL_SCALE)
+size = pg.image.load(join('solitaire', 'assets', 'card.png')).get_size()
+CARD_SCALE = (size[0]*PIXEL_SCALE, size[1]*PIXEL_SCALE)
 PILE_SPACING = 1*PIXEL_SCALE
 EXTRA_PILE_SPACING = 5*PIXEL_SCALE
 CARD_SPACING = 8*PIXEL_SCALE  # to show the numbers when theyre stacked face up

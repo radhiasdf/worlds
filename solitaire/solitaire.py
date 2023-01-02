@@ -7,6 +7,7 @@ import time
 from solitaire.cards_and_piles import Card, Pile, StockPile, StockPileOpened,GrowingPile, SuitPile
 from solitaire.constants import VALUES, SUITS, CARD_SCALE, CARD_SPACING, NUM_GROWING_PILES, FPS, RANDOM_POP, \
     PILE_SPACING, EXTRA_PILE_SPACING, BOARD_SIZE, AUTO_WIN, PIXEL_SCALE
+from solitaire.actions import ActionManager, CardAction
 
 
 # make it as independent of the game it is in as possible
@@ -44,8 +45,10 @@ class InSolitaire:
                 self.draw(self.win)
 
     def reset(self, num_opened_cards):
+        self.actionManager = ActionManager()
+
         # setting up piles
-        self.stockPile = StockPile(StockPileOpened(num_opened_cards), num_opened_cards,
+        self.stockPile = StockPile(StockPileOpened(num_opened_cards), num_opened_cards, self.actionManager,
                                    reload_img=self.images['card_reload'])
 
         for i in range(VALUES):
@@ -81,10 +84,20 @@ class InSolitaire:
         self.animatedCards = []
 
     def update(self, dt, events):
+
         for e in events:
-            if e.type == pg.KEYDOWN and e.key == pg.K_ESCAPE:
-                if self.gameManager:
-                    self.gameManager.state_stack.pop()
+            if e.type == pg.KEYDOWN:
+                if e.key == pg.K_ESCAPE:
+                    if self.gameManager:
+                        self.gameManager.state_stack.pop()
+                elif pg.key.get_mods() & pg.KMOD_LCTRL:
+                    if e.key == pg.K_z:
+                        if pg.key.get_mods() & pg.KMOD_LSHIFT:
+                            self.actionManager.do('redo')
+                        else:
+                            self.actionManager.do('undo')
+                    elif e.key == pg.K_y:
+                        self.actionManager.do('redo')
             if e.type == pg.MOUSEBUTTONDOWN:
                 pos = pg.mouse.get_pos()
                 if not self.won:
@@ -115,7 +128,7 @@ class InSolitaire:
             if pile.clickRect.collidepoint(pos):
                 self.sourcePile = pile
                 # different piles have different rules and return arrays (that can be empty)
-                cards = pile.mouse_down_collide(pos)
+                cards = pile.grab_cards(pos)
                 if cards is not None:
                     for card in cards:
                         self.inHand.array.append(card)
@@ -131,14 +144,15 @@ class InSolitaire:
 
         for pile in chain(self.growingPiles, self.suitPiles):
             if pile.acceptRect.collidepoint(pos) and pile != self.sourcePile:
-                if pile.mouse_up_collide(pos, self.inHand) == 'accepted':
-                    for _ in range(len(self.inHand.array)):
+                if pile.check_accepted(pos, self.inHand) == 'accepted':
+                    num_cards = len(self.inHand.array)
+                    for _ in range(num_cards):
                         pile.array.append(self.inHand.array.pop(0))
-                    self.sourcePile.released_successfully()
+                    new_card_is_opened = self.sourcePile.check_card_under()
+                    self.actionManager.add_action(CardAction(self.sourcePile, pile, num_cards, new_card_is_opened=new_card_is_opened))
                     pile.set_click_rect()
                     if pile in self.suitPiles:
-                        if self.check_won():
-                            self.won = True
+                        self.check_won()
                     return
         for _ in range(len(self.inHand.array)):
             self.sourcePile.array.append(self.inHand.array.pop(0))
@@ -146,8 +160,8 @@ class InSolitaire:
     def check_won(self):
         for pile in self.suitPiles:
             if len(pile.array) != VALUES:
-                return False
-        return True
+                return
+        self.won = True
 
     def set_positions(self):
         self.board_pos = pg.Vector2((self.win.get_width() - BOARD_SIZE.x) / 2,
@@ -225,7 +239,6 @@ class Dropdown(Button):
 
     def draw(self, win):
         if self.img:
-            print('asdfk')
             win.blit(self.img, self.rect.topleft)
         if self.open:
             for option in self.options:

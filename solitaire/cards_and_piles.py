@@ -1,7 +1,8 @@
-from solitaire.changeColour import change_colour
+from solitaire.images import change_colour
 import pygame as pg
 from solitaire.constants import CARD_SCALE, CARD_SPACING, VALUES
 import random
+from solitaire.actions import StockPileClick
 
 
 class Card:
@@ -90,7 +91,7 @@ class Pile:
         self.clickRect = pg.rect.Rect(pos[0], pos[1], CARD_SCALE[0], CARD_SCALE[1])
         self.acceptRect = pg.rect.Rect(pos[0], pos[1], CARD_SCALE[0], CARD_SCALE[1])
 
-    def mouse_down_collide(self, pos):
+    def grab_cards(self, pos):
         # must return array of cards to be iterated in inhand pile
         if self.clickRect.collidepoint(pos):
             try:
@@ -98,10 +99,10 @@ class Pile:
             except IndexError:
                 pass
 
-    def mouse_up_collide(self, pos, pile):
+    def check_accepted(self, pos, pile):
         pass
 
-    def released_successfully(self):
+    def check_card_under(self):
         pass
 
     def set_click_rect(self):
@@ -121,26 +122,32 @@ class Pile:
 
 class StockPile(Pile):
 
-    def __init__(self, opened_pile, num_opened_cards, reload_img=None):
+    def __init__(self, opened_pile, num_opened_cards, action_manager, reload_img=None):
         super().__init__()
         self.reloadImg = reload_img
         self.openedPile = opened_pile
         self.numOpenedCards = num_opened_cards
+        self.actionManager = action_manager  # sorry this is not consistent with where the stack is managed because the
+        # cards dont get passed through the game manager
 
-    def mouse_down_collide(self, pos):
+    def grab_cards(self, pos):
         # reloading all cards back face down
         if len(self.array) == 0:
             for _ in range(len(self.openedPile.array)):
-                self.array.append(self.openedPile.array.pop(0))
+                self.array.append(self.openedPile.array.pop())
                 self.array[-1].faceUp = False
+            self.actionManager.add_action(StockPileClick(self.openedPile, self, len(self.array), face_up=False))
             return []
         # opening one/three cards at a time
+        num_cards = 0
         for _ in range(self.numOpenedCards):
             try:
-                self.openedPile.array.append(self.array.pop(0))
+                self.openedPile.array.append(self.array.pop())
                 self.openedPile.array[-1].faceUp = True
+                num_cards += 1
             except IndexError:
                 pass
+        self.actionManager.add_action(StockPileClick(self, self.openedPile, num_cards, face_up=True))
         return []
 
     def draw(self, win):
@@ -163,7 +170,7 @@ class StockPileOpened(Pile):
         # because only the bottom card can be dragged/clicked theres another rect for it
         self.clickRect.topleft = (self.rect.x, self.rect.y + CARD_SPACING * (self.numVisibleCards - 1))
 
-    def mouse_down_collide(self, pos):
+    def grab_cards(self, pos):
         self.mousedown = True
         if self.clickRect.collidepoint(pos):
             try:
@@ -171,7 +178,7 @@ class StockPileOpened(Pile):
             except IndexError:
                 pass
 
-    def mouse_up_collide(self, pos, pile):
+    def check_accepted(self, pos, pile):
         self.mousedown = False
 
     def draw(self, win):
@@ -195,19 +202,24 @@ class GrowingPile(Pile):
         self.clickRect.update(self.rect.x, self.rect.y + face_down_cards*CARD_SPACING,
                               self.rect.w, CARD_SCALE[1] + (len(self.array)-face_down_cards-1)*CARD_SPACING)
 
-    def mouse_down_collide(self, pos):
+    def grab_cards(self, pos):
         if len(self.array) == 0:
-            return 'empty'
+            # there was an error where if i returned a string it would later dynamically be treated as a card object
+            return
         grabbed = []
-        if self.clickRect.bottom-pos[1] < CARD_SCALE[1]:
+        if self.clickRect.bottom - pos[1] < CARD_SCALE[1]:
             num_grabbed = 1
         else:
-            num_grabbed = (self.clickRect.bottom-pos[1]-CARD_SCALE[1])//CARD_SPACING + 2
+            num_grabbed = (self.clickRect.bottom - CARD_SCALE[1] - pos[1])//CARD_SPACING + 2
         for _ in range(num_grabbed):
-            grabbed.insert(0, self.array.pop())
+            # i use insert instead of 2 stacks because the inhand array is directly rendered
+            try:
+                grabbed.insert(0, self.array.pop())
+            except IndexError:
+                pass  # no idea why this happened  # update: actually might be something to do with the misaligned clickrect that was not reset
         return grabbed
 
-    def mouse_up_collide(self, pos, pile):
+    def check_accepted(self, pos, pile):
         if len(pile.array) == 0:
             return 'empty'
         if len(self.array) > 0:
@@ -216,12 +228,17 @@ class GrowingPile(Pile):
         elif pile.array[0].value == VALUES:
             return 'accepted'
 
-    def released_successfully(self):
+    def check_card_under(self):
         try:
-            self.array[-1].faceUp = True
+            if not self.array[-1].faceUp:
+                self.array[-1].faceUp = True
+                self.set_click_rect()
+                return True
+            else:
+                self.set_click_rect()
+                return False
         except IndexError:
-            print('index error???')
-        self.set_click_rect()
+            return False
 
 
 class SuitPile(Pile):
@@ -240,7 +257,7 @@ class SuitPile(Pile):
         except IndexError:
             pass
 
-    def mouse_up_collide(self, pos, pile):
+    def check_accepted(self, pos, pile):
         if len(pile.array) == 1 and pile.array[0].suit == self.suit:
             try:
                 if pile.array[0].value == self.array[-1].value+1:
@@ -248,4 +265,3 @@ class SuitPile(Pile):
             except:
                 if pile.array[0].value == 1:
                     return 'accepted'
-
