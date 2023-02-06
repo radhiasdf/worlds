@@ -10,10 +10,10 @@ class Tile:
 
 
 def generate_chunk():
-    chunk = []
+    chunk = {}
     for x in range(CHUNK_SIZE):
         for y in range(CHUNK_SIZE):
-            chunk.append(Tile((x, y), random.choice([0, 0, 0, 0, 1])))
+            chunk[(x, y)] = Tile((x, y), random.choice([0, 0, 0, 0, 1]))
     return chunk
 
 

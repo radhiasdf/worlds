@@ -3,9 +3,8 @@ import random
 from random import shuffle
 from itertools import chain
 import pygame as pg
-import time
-from solitaire.cards_and_piles import Card, Pile, StockPile, StockPileOpened,GrowingPile, SuitPile
-from solitaire.constants import VALUES, SUITS, CARD_SCALE, CARD_SPACING, NUM_GROWING_PILES, FPS, RANDOM_POP, \
+from solitaire.cards_and_piles import Card, Pile, StockPile, StockPileOpened, GrowingPile, SuitPile
+from solitaire.constants import VALUES, SUITS, CARD_SCALE, CARD_SPACING, NUM_GROWING_PILES, RANDOM_POP, \
     PILE_SPACING, EXTRA_PILE_SPACING, BOARD_SIZE, AUTO_WIN, PIXEL_SCALE
 from solitaire.actions import ActionManager, CardAction
 
@@ -19,8 +18,8 @@ class InSolitaire:
         else:
             pg.init()
             pg.display.set_caption('Solitaire')
-            pg.display.set_icon(pg.image.load(os.path.join("solitaire", "assets", "card_back.png")))
-            self.win = pg.display.set_mode((pg.display.Info().current_w * .7, pg.display.Info().current_h * .7), pg.RESIZABLE)
+            pg.display.set_icon(pg.image.load(os.path.join('solitaire', "assets", "card_back.png")))
+            self.win = pg.display.set_mode((800, 500))
 
         self.images = load_images(os.path.join('solitaire', 'assets'))
         self.resetButton = Dropdown(img=self.images['reset_button'], pos=(PILE_SPACING, PILE_SPACING))
@@ -28,21 +27,6 @@ class InSolitaire:
         self.resetButton.options.append(Button(img=self.images['hard'], pos=(self.resetButton.options[-1].rect.x, self.resetButton.options[-1].rect.bottom + PILE_SPACING)))
 
         self.reset(1)
-
-        if not game_manager:
-            run = True
-            prev_time = time.time()
-            while run:
-                pg.time.Clock().tick(FPS)
-                dt = time.time() - prev_time  # delta time
-                prev_time = time.time()
-
-                events = pg.event.get()
-                for e in events:
-                    if e.type == pg.QUIT:
-                        run = False
-                self.update(dt, events)
-                self.draw(self.win)
 
     def reset(self, num_opened_cards):
         self.actionManager = ActionManager()
@@ -193,7 +177,11 @@ class InSolitaire:
             elif self.resetButton.options[1].rect.collidepoint(pos):
                 self.reset(3)
 
-    def draw(self, win):
+    def draw(self, window=None):
+        if window is None:
+            win = self.win
+        else:
+            win = window
         win.fill('bisque3')
         self.stockPile.draw(win)
         for pile in self.growingPiles:
