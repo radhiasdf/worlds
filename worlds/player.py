@@ -2,7 +2,7 @@ import pygame as pg
 import os
 import shadows
 from math import sqrt
-from constants import TILE_ZOOM, MOUSE_REACH
+from constants import TILE_ZOOM
 from solitaire.solitaire import InSolitaire
 SPRITE_SIZE = TILE_ZOOM * 2
 
@@ -18,8 +18,8 @@ class Player:
         self.currentAnimationImgs = self.imgsWalkingFront
         self.rect = self.currentAnimationImgs[0].get_rect(center=pos)
         self.direction = pg.math.Vector2()
-        self.speed = 150
-        self.animationSpeed = 7
+        self.speed = 4 * TILE_ZOOM
+        self.animationSpeed = 12
         self.frameIndex = 0
         self.img = self.currentAnimationImgs[int(self.frameIndex)]
 
@@ -47,8 +47,6 @@ class Player:
             if e.type == pg.KEYDOWN:
                 if e.key == pg.K_SPACE:
                     self.gameManager.state_stack.append(InSolitaire(game_manager=self.gameManager))
-            elif e.type in (pg.MOUSEBUTTONDOWN, pg.MOUSEMOTION):
-                self.check_reach()
 
     def update(self, dt, camera_location, events):
         self.input(events)
@@ -61,14 +59,6 @@ class Player:
         self.img = self.currentAnimationImgs[int(self.frameIndex)]
 
         return {'cameraLocation': camera_location, 'inReach': self.inReach}
-
-    def check_reach(self):
-        pos = pg.mouse.get_pos()
-        rect = self.rect.midbottom
-        if sqrt((pos[0] - rect[0]) ** 2 + (pos[1] - rect[1]) ** 2) < MOUSE_REACH:
-            self.inReach = True
-        else:
-            self.inReach = False
 
     def draw(self, win):
         shadows.draw_shadow(self.img, win, self.rect.topleft, self.rect.bottom-6)

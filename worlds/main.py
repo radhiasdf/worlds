@@ -6,8 +6,13 @@ import shelve
 import os
 from constants import *
 import shadows
+# from solitaire.solitaire import InSolitaire #  solitaire embedded in game
+import asyncio
+from math import sqrt, floor
+
 CHUNK_PIXELS = TILE_ZOOM * CHUNK_SIZE
-import solitaire.solitaire
+pg.font.init()
+my_font = pg.font.SysFont('Comic Sans MS', 20)
 
 
 class GameManager:
@@ -15,26 +20,22 @@ class GameManager:
         pg.init()
         pg.display.set_caption('Twuga')
         pg.display.set_icon(pg.image.load(os.path.join("assets", "tiles", "grass3.png")))
-        self.win = pg.display.set_mode((pg.display.Info().current_w * .7, pg.display.Info().current_h * .7))
+        self.win = pg.display.set_mode((896, 503))
+        print(self.win.get_size())
+        # self.state_stack = [InSolitaire(self)]
+        self.state_stack = [MainMenu(self, 'lobby_world')]
 
-        self.state_stack = [MainMenu(self)]
+    def game_loop(self, events):
+        tick = pg.time.Clock().tick(FPS)
+        dt = tick / 1000
+        # print(dt)
 
-        run = True
-        prev_time = time.time()
-        while run:
-            pg.time.Clock().tick(FPS)
-            dt = time.time() - prev_time  # delta time
-            prev_time = time.time()
-
-            events = pg.event.get()
-            for e in events:
-                if e.type == pg.QUIT:
-                    run = False
-
+        try:
             self.state_stack[-1].update(dt, events)
             self.state_stack[-1].draw(self.win)
-            print([state.__class__.__name__ for state in self.state_stack])
-        pg.quit()
+        except IndexError:
+            print("out of the stack's index")
+            pass
 
 
 class State:
@@ -48,65 +49,66 @@ class State:
         pass
 
 
-class MainMenu(State):
-    def __init__(self, game_manager):
-        super().__init__(game_manager)
-        self.lobby = InWorld(game_manager, 'lobby_world')
-
-    def update(self, dt, events):
-
-        for e in events:
-            if e.type == pg.KEYDOWN and e.key == pg.K_SPACE:
-                self.gameManager.state_stack.append(InWorld(self.gameManager, "world_1"))
-
-        self.lobby.update(dt, events)
-
-    def draw(self, win):
-        self.lobby.draw(win)
-
-
 class InWorld(State):
     def __init__(self, game_manager, world_name_id):
         super().__init__(game_manager)
         self.player = Player((game_manager.win.get_width() / 2, game_manager.win.get_height() / 2), game_manager)
 
         self.world_file = shelve.open(os.path.join("saves", world_name_id))
+        # opening the saved world
         try:
             self.mapData = self.world_file['map_data']
         except KeyError:
             self.mapData = {}
+
         self.tileImgs = {i: pg.image.load(os.path.join('assets', 'tiles', TILES[i])) for i in TILES}
         self.set_tile_scale()
 
         self.cameraLocation = pg.Vector2(0, 0)  # is in pixels
+        self.inReach = False
 
     def update(self, dt, events):
         for e in events:
             if e.type == pg.KEYDOWN:
                 if e.key == pg.K_ESCAPE:
                     self.gameManager.state_stack.append(InWorldPauseMenu(self.gameManager))
+            if e.type == pg.MOUSEBUTTONDOWN:
+                self.handle_mouse_down()
 
         self.playerInfo = self.player.update(dt, self.cameraLocation, events)
         self.cameraLocation = self.playerInfo['cameraLocation']
-        self.playerCoords = (self.cameraLocation + self.player.rect.midbottom)/TILE_ZOOM
-        print(self.playerCoords)
+        self.playerCoords = (self.cameraLocation + self.player.rect.midbottom) / TILE_ZOOM
 
     def handle_mouse_down(self):
-        pass
-        """buttons = pg.mouse.get_pressed()
-            if buttons[0]:
-                x = int(location.x / CHUNK_PIXELS)
-                y = int(location.y / CHUNK_PIXELS)
-            self.mapData[(x, y)][0].id = self.player.inHand['tileID']  """
+        buttons = pg.mouse.get_pressed()
+        print(buttons[0])
+        if buttons[0]:
+            pos = (self.cameraLocation + self.player.rect.midbottom) / TILE_ZOOM
+            chunk = pos // CHUNK_SIZE
+            print(f"chunk: {chunk}")
+            tile = (floor(pos.x % CHUNK_SIZE), floor(pos.y % CHUNK_SIZE))
+            print(f"tile: {tile}")
+            self.mapData[(chunk.x, chunk.y)][(tile[0], tile[1])].id = self.player.inHand['tileID']
+            print('uhhh')
+
+    def check_player_reach(self):
+        pos = pg.mouse.get_pos()
+        rect = self.player.rect.midbottom
+        if sqrt((pos[0] - rect[0]) ** 2 + (pos[1] - rect[1]) ** 2) < MOUSE_REACH:
+            self.inReach = True
+        else:
+            self.inReach = False
 
     def save_and_quit(self):
         self.world_file['map_data'] = self.mapData
+        print(f'{self.__class__.__name__} saved')
         self.gameManager.state_stack.pop()
 
     def draw(self, win):
         win.fill('darkolivegreen3')
         self.draw_map(win, self.cameraLocation)
         self.player.draw(win)
+        win.blit(my_font.render(f'{self.playerCoords}', False, 'white'), (0, 0))
         pg.display.update()
 
     def draw_map(self, win, location):  # location is in pixels
@@ -119,7 +121,7 @@ class InWorld(State):
         for x in range(chunk_x - RENDER_DISTANCE, chunk_x + cols_onscreen + RENDER_DISTANCE + 1):
             for y in range(chunk_y - RENDER_DISTANCE, chunk_y + rows_onscreen + RENDER_DISTANCE + 1):
                 try:
-                    for tile in self.mapData[(x, y)]:
+                    for tile in self.mapData[(x, y)].values():
                         pos_x = x * CHUNK_PIXELS + tile.x * TILE_ZOOM - location.x
                         pos_y = y * CHUNK_PIXELS + tile.y * TILE_ZOOM - location.y
                         try:
@@ -141,6 +143,27 @@ class InWorld(State):
                          i in self.tileImgs}
 
 
+class MainMenu(InWorld):
+    def __init__(self, game_manager, world_name_id):
+        super().__init__(game_manager, world_name_id)
+        # the lobby is like a glove of the InWorld state rn
+
+    def update(self, dt, events):
+
+        for e in events:
+            if e.type == pg.KEYDOWN and e.key == pg.K_SPACE:
+                self.gameManager.state_stack.append(InWorld(self.gameManager, "world_1"))
+            if e.type == pg.MOUSEBUTTONDOWN:
+                self.handle_mouse_down()
+            if e.type == pg.QUIT:
+                self.save_and_quit()
+
+        self.playerInfo = self.player.update(dt, self.cameraLocation, events)
+        self.cameraLocation = self.playerInfo['cameraLocation']
+        self.playerCoords = (self.cameraLocation + self.player.rect.midbottom) / TILE_ZOOM
+        # print(self.playerCoords)
+
+
 class InWorldPauseMenu(State):
     def __init__(self, game_manager):
         super().__init__(game_manager)
@@ -159,6 +182,19 @@ class InWorldPauseMenu(State):
         pg.display.update()
 
 
-#run = GameManager()
-pg.init()
-solitaire.solitaire.InSolitaire()
+async def main():
+    game_manager = GameManager()
+    run = True
+    while run:
+        events = pg.event.get()
+        game_manager.game_loop(events)
+
+        for e in events:
+            if e.type == pg.QUIT:
+                run = False
+        # print([state.__class__.__name__ for state in game_manager.state_stack])
+
+        await asyncio.sleep(0)
+
+
+asyncio.run(main())
