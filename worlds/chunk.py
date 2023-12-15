@@ -2,13 +2,6 @@ import random
 from constants import CHUNK_SIZE
 
 
-class Tile:
-    def __init__(self, relative_location, index, rotation=0):
-        self.x, self.y = relative_location
-        self.id = index
-        self.rotation = rotation
-
-
 def generate_chunk():
     chunk = {}
     for x in range(CHUNK_SIZE):
@@ -17,5 +10,8 @@ def generate_chunk():
     return chunk
 
 
-
-
+class Tile:
+    def __init__(self, relative_location, index, rotation=0):
+        self.x, self.y = relative_location
+        self.id = index
+        self.rotation = rotation
